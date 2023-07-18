@@ -3,23 +3,12 @@ import math
 import torch
 from torch import nn
 from torch.nn import functional as F
-
+import torchaudio
 
 class Postnet(torch.nn.Module):
-    """Postnet module for Spectrogram prediction network.
-    This is a module of Postnet in Spectrogram prediction network,
-    which described in `Natural TTS Synthesis by
-    Conditioning WaveNet on Mel Spectrogram Predictions`_.
-    The Postnet predicts refines the predicted
-    Mel-filterbank of the decoder,
-    which helps to compensate the detail sturcture of spectrogram.
-    .. _`Natural TTS Synthesis by Conditioning WaveNet on Mel Spectrogram Predictions`:
-       https://arxiv.org/abs/1712.05884
-    """
 
     def __init__(
-        self,
-        idim: int,
+        self, idim: int,
         odim: int,
         n_layers: int = 5,
         n_chans: int = 512,
@@ -27,16 +16,6 @@ class Postnet(torch.nn.Module):
         dropout_rate: float = 0.5,
         use_batch_norm: bool = True,
     ):
-        """Initialize postnet module.
-        Args:
-            idim (int): Dimension of the inputs.
-            odim (int): Dimension of the outputs.
-            n_layers (int, optional): The number of layers.
-            n_filts (int, optional): The number of filter size.
-            n_units (int, optional): The number of filter channels.
-            use_batch_norm (bool, optional): Whether to use batch normalization..
-            dropout_rate (float, optional): Dropout rate..
-        """
         super(Postnet, self).__init__()
         self.postnet = torch.nn.ModuleList()
         for layer in range(n_layers - 1):
@@ -155,15 +134,6 @@ class ResidualConv1dGLU(nn.Module):
         self.conv1x1_skip = nn.Conv1d(gate_out_channels, skip_out_channels, 1, bias=bias)
 
     def forward(self, x):
-        """Forward
-        Args:
-            x (Tensor): B x C x T
-            c (Tensor): B x C x T, Local conditioning features
-            g (Tensor): B x C x T, Expanded global conditioning features
-        Returns:
-            Tensor: output
-        """
-
         residual = x
         x = F.dropout(x, p=self.dropout, training=self.training)
         splitdim = 1
@@ -184,20 +154,20 @@ class ResidualConv1dGLU(nn.Module):
         return x, s
 
 
-class Generator(nn.Module):
+class WaveNet(nn.Module):
     def __init__(self, in_channels, out_channels=1, bias=False,
                  num_layers=20, num_stacks=2, kernel_size=3,
                  residual_channels=128, gate_channels=128, skip_out_channels=128,
                  postnet_layers=12, postnet_filts=32, use_batch_norm=False, postnet_dropout_rate=0.5):
         super().__init__()
         assert num_layers % num_stacks == 0
+        self.receptive_field = 0
         num_layers_per_stack = num_layers // num_stacks
-        # in_channels is 1 for RAW waveform otherwise quantize classes
         self.first_conv = nn.Conv1d(in_channels, residual_channels, 3, padding=1, bias=bias)
-
         self.conv_layers = nn.ModuleList()
         for n_layer in range(num_layers):
             dilation = 2**(n_layer % num_layers_per_stack)
+            self.receptive_field += (kernel_size-1)*dilation
             conv = ResidualConv1dGLU(
                 residual_channels, gate_channels,
                 skip_out_channels=skip_out_channels,
@@ -257,12 +227,33 @@ def generator_loss(disc_outputs):
 
     return loss, gen_losses
 
+class BNEGenerator(nn.Module):
+    def __init__(self, in_channels, in_sample, out_sample):
+        super(BNEGenerator, self).__init__()
+        self.wavenet = WaveNet(in_channels)
+        self.in_sample = in_sample
+        self.out_sample = out_sample
+    def forward(self, input):
+        input = torchaudio.functional.resample(
+            input,
+            self.in_sample,
+            self.out_sample,
+            resampling_method="kaiser_window",
+            lowpass_filter_width=16,
+            rolloff=0.945,
+            beta=14.769656459379492,
+        )
+        pad = self.wavenet.receptive_field // 2
+        input = torch.nn.functional.pad(input, [pad, pad])
+        input = self.wavenet(input)[0]
+        input = torch.tanh(input)
+        input = input[..., pad:-pad]
+        return input
 
 
 if __name__ == '__main__':
 
-    model = Generator(1)
+    model = BNEGenerator(1, 16000, 48000)
     x = torch.ones([2, 1, 16000])
     y = model(x)
     print("Shape of y", y.shape)
-    assert x.shape[-1] == y.shape[-1]

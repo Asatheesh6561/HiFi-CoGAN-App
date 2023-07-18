@@ -8,13 +8,13 @@ import argparse
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DistributedSampler, DataLoader
 import torch.multiprocessing as mp
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
 from dataset import MelDataset, get_dataset_filelist
-from generator import Generator, generator_loss
+from generator import BNEGenerator, generator_loss
 from discriminator import MultiScaleDiscriminator, feature_loss, discriminator_loss
 from utils import scan_checkpoint, load_checkpoint, save_checkpoint, HParam
 from coulomb import get_potentials, mean_squared_error
@@ -28,9 +28,9 @@ def train(rank, args, hp, hp_str):
                             world_size=hp.dist.world_size * hp.train.num_gpus, rank=rank)
 
     torch.cuda.manual_seed(hp.train.seed)
-    device = torch.device('cuda:{:d}'.format(rank))
+    device = torch.device('cuda:{:d}'.format(rank) if torch.cuda.is_available() else 'cpu')
 
-    generator = Generator(hp.model.in_channels, hp.model.out_channels).to(device)
+    generator = BNEGenerator(hp.model.in_channels, hp.audio.input_sampling_rate, hp.audio.sampling_rate).to(device)
     msd = MultiScaleDiscriminator().to(device)
 
     if rank == 0:
@@ -88,7 +88,7 @@ def train(rank, args, hp, hp_str):
                         n_cache_reuse=0, fmax_loss=None, device=device)
         validation_loader = DataLoader(validset, num_workers=1, shuffle=False, sampler=None, batch_size=1, pin_memory=True, drop_last=True)
 
-        sw = SummaryWriter(os.path.join(hp.logs.chkpt_dir, 'logs'))
+        #sw = SummaryWriter(os.path.join(hp.logs.chkpt_dir, 'logs'))
 
     generator.train()
     msd.train()
@@ -169,8 +169,8 @@ def train(rank, args, hp, hp_str):
                                      'epoch': epoch, 'hp_str': hp_str})
 
                 # Tensorboard summary logging
-                if steps % hp.logs.summary_interval == 0:
-                    sw.add_scalar("training/gen_loss_total", loss_gen_all, steps)
+                #if steps % hp.logs.summary_interval == 0:
+                    #sw.add_scalar("training/gen_loss_total", loss_gen_all, steps)
 
                 # Validation
                 if steps % hp.logs.validation_interval == 0:  # and steps != 0:
@@ -187,16 +187,14 @@ def train(rank, args, hp, hp_str):
                             if y_g_hat is not None:
                                 val_err_tot += F.l1_loss(y, y_g_hat).item()
 
-                            if j <= 4:
-                                if steps == 0:
-                                    sw.add_audio('gt_noise/y_{}'.format(j), x[0], steps, hp.audio.sampling_rate)
-                                    sw.add_audio('gt_clean/y_{}'.format(j), y[0], steps, hp.audio.sampling_rate)
+                            #if j <= 4:
+                                #if steps == 0:
+                                    #sw.add_audio('gt_noise/y_{}'.format(j), x[0], steps, hp.audio.sampling_rate)
+                                    #sw.add_audio('gt_clean/y_{}'.format(j), y[0], steps, hp.audio.sampling_rate)
 
-                                sw.add_audio('generated/y_hat_{}'.format(j), before_y_g_hat[0], steps, hp.audio.sampling_rate)
-                                if y_g_hat is not None:
-                                    sw.add_audio('generated/y_hat_after_{}'.format(j), y_g_hat[0], steps,
-                                                 hp.audio.sampling_rate)
-
+                                #sw.add_audio('generated/y_hat_{}'.format(j), before_y_g_hat[0], steps, hp.audio.sampling_rate)
+                                #if y_g_hat is not None:
+                                    #sw.add_audio('generated/y_hat_after_{}'.format(j), y_g_hat[0], steps, hp.audio.sampling_rate)
                     generator.train()
 
             steps += 1
@@ -212,7 +210,7 @@ def main():
 
     parser.add_argument('--group_name', default=None)
     parser.add_argument('--checkpoint_path', default='cp_hifigan')
-    parser.add_argument('-c', '--config', default='config.yaml')
+    parser.add_argument('-c', '--config', default='model/config.yaml')
     parser.add_argument('--training_epochs', default=100, type=int)
     parser.add_argument('--stdout_interval', default=5, type=int)
     parser.add_argument('--fine_tuning', default=False, type=bool)
@@ -222,7 +220,7 @@ def main():
     hp = HParam(args.config)
     with open(args.config, 'r') as f:
         hp_str = ''.join(f.readlines())
-
+    print(torch.device)
     torch.manual_seed(hp.train.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(hp.train.seed)

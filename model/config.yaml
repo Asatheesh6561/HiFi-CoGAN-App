@@ -37,7 +37,8 @@ audio:
   filter_length: 1024
   hop_length: 256 # WARNING: this can't be changed.
   win_length: 1024
-  sampling_rate: 16000
+  input_sampling_rate: 16000
+  sampling_rate: 48000
   mel_fmin: 0.0
   mel_fmax: 8000.0
   fmax_for_loss: null
