@@ -7,22 +7,25 @@ import torch
 from librosa.util import normalize
 from scipy.io.wavfile import write
 from dataset import MAX_WAV_VALUE, load_wav
-from generator import Generator
+from generator import BNEGenerator
 from utils import HParam
+
 def load_checkpoint(filepath, device):
     assert os.path.isfile(filepath)
     print("Loading '{}'".format(filepath))
     checkpoint_dict = torch.load(filepath, map_location=device)
     print("Complete.")
     return checkpoint_dict
+
 def scan_checkpoint(cp_dir, prefix):
     pattern = os.path.join(cp_dir, prefix + '*')
     cp_list = glob.glob(pattern)
     if len(cp_list) == 0:
         return ''
     return sorted(cp_list)[-1]
+
 def inference(with_postnet=False):
-    generator = Generator(hp.model.in_channels).to(device)
+    generator = BNEGenerator(hp.model.in_channels).to(device)
 
     state_dict_g = load_checkpoint("g_00370000", device)
     generator.load_state_dict(state_dict_g['generator'])

@@ -8,7 +8,7 @@ import argparse
 import torch
 from tqdm import tqdm
 import torch.nn.functional as F
-#from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DistributedSampler, DataLoader
 import torch.multiprocessing as mp
 from torch.distributed import init_process_group
@@ -88,7 +88,7 @@ def train(rank, args, hp, hp_str):
                         n_cache_reuse=0, fmax_loss=None, device=device)
         validation_loader = DataLoader(validset, num_workers=1, shuffle=False, sampler=None, batch_size=1, pin_memory=True, drop_last=True)
 
-        #sw = SummaryWriter(os.path.join(hp.logs.chkpt_dir, 'logs'))
+        sw = SummaryWriter(os.path.join(hp.logs.chkpt_dir, 'logs'))
 
     generator.train()
     msd.train()
@@ -169,8 +169,8 @@ def train(rank, args, hp, hp_str):
                                      'epoch': epoch, 'hp_str': hp_str})
 
                 # Tensorboard summary logging
-                #if steps % hp.logs.summary_interval == 0:
-                    #sw.add_scalar("training/gen_loss_total", loss_gen_all, steps)
+                if steps % hp.logs.summary_interval == 0:
+                    sw.add_scalar("training/gen_loss_total", loss_gen_all, steps)
 
                 # Validation
                 if steps % hp.logs.validation_interval == 0:  # and steps != 0:
@@ -187,14 +187,14 @@ def train(rank, args, hp, hp_str):
                             if y_g_hat is not None:
                                 val_err_tot += F.l1_loss(y, y_g_hat).item()
 
-                            #if j <= 4:
-                                #if steps == 0:
-                                    #sw.add_audio('gt_noise/y_{}'.format(j), x[0], steps, hp.audio.sampling_rate)
-                                    #sw.add_audio('gt_clean/y_{}'.format(j), y[0], steps, hp.audio.sampling_rate)
+                            if j <= 4:
+                                if steps == 0:
+                                    sw.add_audio('gt_noise/y_{}'.format(j), x[0], steps, hp.audio.sampling_rate)
+                                    sw.add_audio('gt_clean/y_{}'.format(j), y[0], steps, hp.audio.sampling_rate)
 
-                                #sw.add_audio('generated/y_hat_{}'.format(j), before_y_g_hat[0], steps, hp.audio.sampling_rate)
-                                #if y_g_hat is not None:
-                                    #sw.add_audio('generated/y_hat_after_{}'.format(j), y_g_hat[0], steps, hp.audio.sampling_rate)
+                                sw.add_audio('generated/y_hat_{}'.format(j), before_y_g_hat[0], steps, hp.audio.sampling_rate)
+                                if y_g_hat is not None:
+                                    sw.add_audio('generated/y_hat_after_{}'.format(j), y_g_hat[0], steps, hp.audio.sampling_rate)
                     generator.train()
 
             steps += 1
