@@ -47,7 +47,7 @@ Ensure you have the following installed before setting up the project:
 
 ## Technologies Used
 - **Android Studio**: Development environment
-- **Java/Kotlin**: Primary programming language
+- **Java**: Primary programming language
 - **Google Drive API**: For audio file upload
 - **Signal Processing Libraries**: For noise reduction
 
