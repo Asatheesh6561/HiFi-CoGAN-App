@@ -24,7 +24,7 @@ Ensure you have the following installed before setting up the project:
 2. **Clone the Repository**
    - Open a terminal and run:
      ```sh
-     git clone https://github.com/Asatheesh6561/WaveCleaner)
+     git clone https://github.com/Asatheesh6561/WaveCleaner
      cd wave-cleaner
      ```
 
